@@ -37,7 +37,7 @@ const AuctionSchema = new Schema({
         type: Date,
     },
     bids: {
-        type: Array<{[key: string]: number}>,
+        type: [],
 
     },
     bidIncrement: {
@@ -46,6 +46,10 @@ const AuctionSchema = new Schema({
     },
     name: {
         type: String
+    },
+    timer: {
+        type: Number,
+        required: true
     },
     winner: {
         type: String,
