@@ -5,6 +5,7 @@ import Auction  from "./auction";
 import mongoose, { ObjectId } from 'mongoose';
 import AppError from "../../libraries/error";
 import { error } from "../../libraries/constants";
+import { asyncWrapper } from "../../libraries/utils/asyncWrapper";
 
 interface IAuction {
 	auctioneer: ObjectId,
@@ -47,6 +48,15 @@ class LiveAuction {
 			}
 			throw new AppError('ServerError', 'exception occured in Auction model', false);
 		}
+	}
+
+	async getAuctionById(auctionId: string) {
+		const results = await asyncWrapper(Auction.findById(auctionId));
+		if (results.error){
+			console.log(results.error);
+			throw new AppError('DatabaseError', 'Failure in db', false);
+		}
+		return results.data;
 	}
 	
 }
