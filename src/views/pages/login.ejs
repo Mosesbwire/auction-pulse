@@ -1,0 +1,23 @@
+<%- include('../partials/head') %>
+<body class="pt-5">
+    <div class="container text-center mb-5">
+        <h1>Auction pulse</h1>
+        <small>EST.2023</small>
+    </div>
+    <div class="container form-container ">
+        <h4 class="text-center mb-5">Log in to your account</h4>
+        <form action="/api/v1/auctioneers/login" method="post" class="mx-auto mb-3">
+            <div class="mb-4">
+                <input type="email" class="form-control form-control-lg" name="email" id="" placeholder="Email address">
+            </div>
+            <div class="mb-3">
+                <input type="password" class="form-control form-control-lg" name="password" id="" placeholder="Password">
+            </div>
+            <div class="d-grid mt-5">
+                <button type="submit" class="btn btn-primary btn-lg">Log in</button>
+            </div>
+        </form>
+        <p class="text-center">Don't have an account? <a href="signup" class="link-underline-light">Sign up</a></p>
+    </div>
+</body>
+</html>

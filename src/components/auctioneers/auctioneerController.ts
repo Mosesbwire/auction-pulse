@@ -54,12 +54,21 @@ export async function login(req: Request, res: Response, next: NextFunction){
 	if (!isValidPassword){
 		return next(new AppError('IncorrectCredentials', 'Invalid Email/Password', true, 400))
 	}
-	const payload = {
-		id: user?.id,
-		name: `${user?.firstName} ${user?.lastName}`
-	}
-	const token = await generateAuthToken(payload);
-	res.status(200).json({message: 'successfully logged in', token});
+	// const payload = {
+	// 	id: user?.id,
+	// 	name: `${user?.firstName} ${user?.lastName}`
+	// }
+	// const token = await generateAuthToken(payload);
+	// res.status(200).json({message: 'successfully logged in', token});
+	res.redirect('/api/v1/auctions/dashboard');
+}
+
+export function renderLoginPage(req: Request, res: Response){
+	res.render('../views/pages/login');
+}
+
+export function renderSignUpPage(req: Request, res: Response){
+	res.render('../views/pages/signup')
 }
 
 

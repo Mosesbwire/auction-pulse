@@ -4,6 +4,7 @@ import { redisClient } from "../../libraries/caching/redisCache";
 import { asyncWrapper } from "../../libraries/utils/asyncWrapper";
 import AppError, { errorHandler } from "../../libraries/error";
 import Auction from "./auction";
+
 /**
  *
  * service layer for the auction, interface to interact with other modules
@@ -31,12 +32,22 @@ export default class AuctionService {
 			return Auction.hydrate(dbResults.data)
 		}
 	}
+
+	hydrateDocument(auction: string){
+		return Auction.hydrate(auction);
+	}
+	async initAuction(auctionId: string){
+		const act = await redisClient.get(`auction_${auctionId}`);
+		if (act){
+			const auction = this.hydrateDocument(act);
+			
+		}
+	}
 	async runAuction(socket: Socket) {
 		const auctionId: string | undefined | string[] = socket.handshake.query.id;
 		const results = await asyncWrapper(this.getAuctionById(String(auctionId)));
 
 		if (results.error){
-			console.log(results.error);
 			return socket.emit('appError', 'Server error. Try later')
 		}
 		if (results.data === undefined){

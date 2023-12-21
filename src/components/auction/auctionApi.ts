@@ -1,5 +1,5 @@
 import express from 'express';
-import { createLiveAuction } from './auctionController';
+import { createLiveAuction, renderDashboard } from './auctionController';
 
 export const route = express.Router();
 
@@ -8,3 +8,4 @@ export const route = express.Router();
  * creates new resource
  */
 route.post('/', createLiveAuction);
+route.get('/dashboard', renderDashboard);

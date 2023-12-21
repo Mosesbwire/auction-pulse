@@ -17,3 +17,7 @@ export async function createLiveAuction(req: Request, res: Response, next: NextF
 	}
 }
 
+export function renderDashboard(req:Request, res:Response){
+	res.render('../views/pages/dashboard');
+}
+
