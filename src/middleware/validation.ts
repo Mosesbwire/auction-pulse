@@ -49,3 +49,12 @@ export async function validateSignUpData(req: Request, res: Response, next: Next
 	}
 	next();
 }
+
+export async function validateLoginData(req: Request, res: Response, next: NextFunction) {
+	const validations = [
+		body('email').trim().notEmpty().withMessage('Email cannot be empty').bail().isEmail().withMessage('Invalid email format'),
+		body('password').trim().notEmpty().withMessage('Password cannot be empty').bail().isLength({min: 6}).withMessage('Password should be at least 6 characters')
+	]
+	await validate(validations, req, res, next);
+	next();
+}
