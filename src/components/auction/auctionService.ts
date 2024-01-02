@@ -46,7 +46,6 @@ export default class AuctionService {
 	async runAuction(socket: Socket) {
 		const auctionId: string | undefined | string[] = socket.handshake.query.id;
 		const results = await asyncWrapper(this.getAuctionById(String(auctionId)));
-
 		if (results.error){
 			return socket.emit('appError', 'Server error. Try later')
 		}
@@ -61,7 +60,12 @@ export default class AuctionService {
 		if (auction.status === 'pending') {
 			return socket.emit('appError', `This auction will start on: ${auction.startDate}`);
 		}
-
+		if (!socket.handshake.headers.user){
+			return socket.emit('appError', 'Client Error. user header missing')
+		}
+		const user = socket.handshake.headers.user;
+		await redisClient.set(`auction:${auction.id}:${user}`, String(user));
+		await redisClient.set(`auction:${auction.id}:${user}:sessionId`, socket.id);
 		await redisClient.set(`auction:${auction.id}:status`, auction.status);
 		await redisClient.set(`auction:${auction.id}:timer`, auction.timer);
 		await redisClient.set(`auction:${auction.id}:bidIncrement`, auction.bidIncrement);
@@ -88,11 +92,15 @@ export default class AuctionService {
 					const highestBid = await redisClient.get(`standing:bid:${auctionId}`);
 					await redisClient.set(`auction:${auctionId}:status`, 'closed');
 					const currentAuction = await redisClient.get(`auction_${auctionId}`);
+					const userId = await redisClient.get(`auction:${auction.id}:${user}`)
 					if (currentAuction){
 						const updateAuction = Auction.hydrate(JSON.parse(currentAuction));
 						updateAuction.status = 'closed';
+						updateAuction.winner = userId;
 						await updateAuction.save();
 					}
+					const winner = await redisClient.get(`auction:${auctionId}:highest:bidder`);
+					this.io.to(String(winner)).emit('update', 'You won the auction');
 					return this.io.to(String(auctionId)).emit('closed', `Auction closed. Highest bid: ${highestBid}`);
 					
 				}
@@ -107,10 +115,16 @@ export default class AuctionService {
 		socket.on('bid', async ()=> {
 			const status = await redisClient.get(`auction:${auctionId}:status`)
 			const bidIncrement = await redisClient.get(`auction:${auctionId}:bidIncrement`);
+			const user = socket.handshake.headers.user;
+			if (!user){
+				return socket.emit('appError', 'Client error. user header missing')
+			}
 			if (status === 'closed'){
 				return socket.emit('update', 'This auction has ended');
 			}
 			const standingBid = await redisClient.get(`standing:bid:${auctionId}`);
+			const userSocketId = await redisClient.get(`auction:${auction.id}:${user}:sessionId`)
+			await redisClient.set(`auction:${auctionId}:highest:bidder`, String(userSocketId));
 			if (standingBid && bidIncrement){
 				const newStandingBid = Number(standingBid) + Number(bidIncrement);
 				this.io.to(String(auctionId)).emit('update', newStandingBid);
@@ -132,13 +146,19 @@ export default class AuctionService {
 
 		socket.on('customBid', async (arg) => {
 			const status = await redisClient.get(`auction:${auctionId}:status`)
+			const user = socket.handshake.headers.user;
 			if (status === 'closed'){
 				return socket.emit('update', 'This auction has ended');
+			}
+			if (!user){
+				return socket.emit('appError', 'Client error. user header missing')
 			}
 			const standingBid = await redisClient.get(`standing:bid:${auctionId}`);
 			if (standingBid && arg && Number(standingBid) >= Number(arg)){
 				return socket.emit('update', `Your bid of ${arg} should be higher than current standing bid of ${standingBid}`);
 			}
+			const userSocketId = await redisClient.get(`auction:${auction.id}:${user}:sessionId`)
+			await redisClient.set(`auction:${auctionId}:highest:bidder`, String(userSocketId));
 			await redisClient.set(`standing:bid:${auctionId}`, arg);
 			const timer = await redisClient.get(`auction:${auctionId}:timer`);
 			const endTime = Date.now() + Number(timer) * 1000;
