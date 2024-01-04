@@ -1,179 +1,208 @@
 import { Server, Socket } from "socket.io";
 import liveAuction from "./auctionModel";
 import { redisClient } from "../../libraries/caching/redisCache";
-import { asyncWrapper } from "../../libraries/utils/asyncWrapper";
-import AppError, { errorHandler } from "../../libraries/error";
-import Auction from "./auction";
 
 /**
  *
  * service layer for the auction, interface to interact with other modules
+ * 
  */
-export default class AuctionService {
+
+class Bid {
+	bidAmount: number;
+	msg = '';
+	standingBid: number
+
+	constructor(bid: number, standingBid: number){
+		this.bidAmount = bid;
+		this.standingBid = standingBid
+	}
+
+	isValid(){
+		if (this.bidAmount < this.standingBid){
+			this.msg = 'Invalid: Bid should be higher or equal to current standing bid'
+			return false
+		}
+		this.msg = 'Valid Bid'
+		return true
+	}
+	getBidMsg(){
+		return this.msg
+	}
+
+	process(){
+		// add this bid to the job queue
+	}
+
+}
+
+class Timer {
 	io: Server;
-	constructor(io: Server) {
+
+	constructor(io: Server){
 		this.io = io;
 	}
 
-	async getAuctionById(auctionId: string){
-		const results = await asyncWrapper(redisClient.get(`auction_${auctionId}`));
-		if (results.error){
-			throw new AppError(results.error.name, results.error.message, false);
+	async initTimer(auctionTimer: number, room: string){
+		await redisClient.hSet(
+			`auction:${room}:timer`,
+			{
+				endTime: 0,
+				timedOut: 'false',
+				timerOn: 'false',
+				auctionTimer: auctionTimer
+			}
+		);
+	}
+
+	async startCountDown(room: string){
+	
+		const key = `auction:${room}:timer`;
+		const timer = await redisClient.hGet(key, 'auctionTimer');
+		const newEndTime = Date.now() + Number(timer) * 1000;
+		await redisClient.hSet(key, 'endTime', newEndTime);
+		await redisClient.setEx(`ttl:key:${room}`, Number(timer), String(newEndTime));
+	
+	}
+
+	clearTimer(timerId: string){
+		clearInterval(timerId);
+	}
+
+	async isTimedOut(room: string){
+		const key = `auction:${room}:timer`;
+		const endTime = await redisClient.hGet(key, 'endTime');
+		if (Number(endTime) < Date.now()){
+			await redisClient.hSet(key, 'timedOut', 'true');
+			const counterId = await redisClient.hGet(key, 'counterId')
+			if (counterId) this.clearTimer(counterId);
+			return true
 		}
-		if (results.data){
-			return Auction.hydrate(JSON.parse(results.data))
-		}
-		const dbResults = await asyncWrapper(liveAuction.getAuctionById(auctionId));
-		if (dbResults.error && dbResults.error instanceof AppError){
-				throw new AppError(dbResults.error.name, dbResults.error.message, dbResults.error.isOperational);
-		}
-		if (dbResults.data) {
-			await redisClient.set(`auction_${auctionId}`, JSON.stringify(dbResults.data))
-			return Auction.hydrate(dbResults.data)
+		return false
+	}
+
+	async isTimerOn(room: string){
+		const key = `auction:${room}:timer`;
+		const timerOn = await redisClient.hGet(key, 'timerOn');
+		return timerOn === 'true';
+	}
+	
+	async setTimerOn(room: string){
+		const key = `auction:${room}:timer`;
+		await redisClient.hSet(key, 'timerOn', 'true');
+	}
+	
+	async countDown(room: string){
+		const counterId = setInterval(async ()=> {
+			const isTimedOut = await this.isTimedOut(room);
+			if (!isTimedOut){
+				this.io.to(room).emit('countdown', await redisClient.ttl(`ttl:key:${room}`));
+			}
+		}, 1000);
+		await redisClient.hSet(`auction:${room}:timer`, 'counterId', String(counterId));
+	}
+
+}
+
+type auctionDataType = Awaited<ReturnType<typeof liveAuction.getAuctionById>>;
+class AuctionProcess {
+	timer: Timer;
+
+	constructor(timer: Timer){
+		this.timer = timer;
+	}
+
+	static async isActivated(auctionId: string){
+		const status = await redisClient.hGet(`auction:${auctionId}:process`, 'isActivated');
+		return status === 'true';
+	}
+	async initAuctionProcess(auction: auctionDataType){
+		if (auction && auction.item){
+			await redisClient.hSet(
+				`auction:${auction.id}:process`,
+				{
+					bidIncrement: auction.bidIncrement,
+					standingBid: auction.item.reservePrice,
+					status: auction.status,
+					isActivated: 'true'
+				}
+			)
+			this.timer.initTimer(auction.timer, auction.id);
 		}
 	}
 
-	hydrateDocument(auction: string){
-		return Auction.hydrate(auction);
+	// add function to update standing bid
+
+	async bidIncrement(auctionId: string){
+		const amount = await redisClient.hGet(`auction:${auctionId}:process`, 'bidIncrement');
+		return Number(amount);
 	}
-	async initAuction(auctionId: string){
-		const act = await redisClient.get(`auction_${auctionId}`);
-		if (act){
-			const auction = this.hydrateDocument(act);
-			
+
+	async standingBid(auctionId: string){
+		const amount = await redisClient.hGet(`auction:${auctionId}:process`, 'standingBid');
+		return Number(amount);
+	}
+
+	async isActive(auctionId: string){
+		return await this.timer.isTimedOut(auctionId);
+	}
+
+
+	async close(auctionId: string){
+		await redisClient.hSet(`auction:${auctionId}:process`, 'status', 'closed');
+	}
+
+	async placeBid(auctionId: string, bid: Bid){
+		const timerStatus = await this.timer.isTimerOn(auctionId);
+		if (!timerStatus && bid.isValid()){
+			this.timer.countDown(auctionId);
+			await this.timer.setTimerOn(auctionId);
+		}
+		
+		if (bid.isValid()){
+			await this.timer.startCountDown(auctionId);
+			return bid.bidAmount;
 		}
 	}
-	async runAuction(socket: Socket) {
+}
+
+export class AuctionProcessFactory{
+	static createProcess(io: Server){
+		const timer = new Timer(io);
+		return new AuctionProcess(timer);
+	}
+}
+
+
+export default class AuctionService {
+	io: Server;
+	auctionProcess: AuctionProcess
+	constructor(io: Server, auctionProcess: AuctionProcess) {
+		this.io = io;
+		this.auctionProcess = auctionProcess
+	}
+
+	async run(socket: Socket) {
 		const auctionId: string | undefined | string[] = socket.handshake.query.id;
-		const results = await asyncWrapper(this.getAuctionById(String(auctionId)));
-		if (results.error){
-			return socket.emit('appError', 'Server error. Try later')
-		}
-		if (results.data === undefined){
-			return socket.emit('appError', 'Auction does not exist');
+
+		const auction = await liveAuction.getAuctionById(String(auctionId));
+		
+		const isActivated = await AuctionProcess.isActivated(auction?.id);
+
+		if (!isActivated){
+			this.auctionProcess.initAuctionProcess(auction);
 		}
 
-		const auction = results.data;
-		if (auction.status === 'closed'){
-			return socket.emit('appError', 'This auction is closed');
-		}
-		if (auction.status === 'pending') {
-			return socket.emit('appError', `This auction will start on: ${auction.startDate}`);
-		}
-		if (!socket.handshake.headers.user){
-			return socket.emit('appError', 'Client Error. user header missing')
-		}
-		const user = socket.handshake.headers.user;
-		await redisClient.set(`auction:${auction.id}:${user}`, String(user));
-		await redisClient.set(`auction:${auction.id}:${user}:sessionId`, socket.id);
-		await redisClient.set(`auction:${auction.id}:status`, auction.status);
-		await redisClient.set(`auction:${auction.id}:timer`, auction.timer);
-		await redisClient.set(`auction:${auction.id}:bidIncrement`, auction.bidIncrement);
-		if (auction.item){
-			await redisClient.set(`auction:${auction.id}:reserve`, auction.item.reservePrice);
-			await redisClient.set(`standing:bid:${auction.id}`, auction.item.reservePrice);
-		}
-
-		if (auctionId !== undefined){
-			socket.join(auctionId);
-			const bid = await redisClient.get(`standing:bid:${auctionId}`)
-			socket.emit('welcome', `Welcome to the auction. Item: ${auction.item?.title}, Reserve price: ${auction.item?.reservePrice}\nBid Increments at ${auction.bidIncrement}, Bids expire after every: ${auction.timer} seconds\n Current bids start at ${bid}`);
-		}
+		socket.join(String(auctionId));
+		socket.emit('welcome', 'Welcome to the auction you can proceed to bid')
 		
-		const isTimer = await redisClient.get(`auctionTimer_${auctionId}`);
-		
-		if (!isTimer){
-			await redisClient.set(`auctionTimer_${auctionId}`, 1);
-			
-			setInterval(async()=>{
-				const endTime = await redisClient.get(`endtime_${auctionId}`)
-				const status = await redisClient.get(`auction:${auctionId}:status`)
-				if (endTime && Number(endTime) < Date.now() && status === 'open'){
-					const highestBid = await redisClient.get(`standing:bid:${auctionId}`);
-					await redisClient.set(`auction:${auctionId}:status`, 'closed');
-					const currentAuction = await redisClient.get(`auction_${auctionId}`);
-					const userId = await redisClient.get(`auction:${auction.id}:${user}`)
-					if (currentAuction){
-						const updateAuction = Auction.hydrate(JSON.parse(currentAuction));
-						updateAuction.status = 'closed';
-						updateAuction.winner = userId;
-						await updateAuction.save();
-					}
-					const winner = await redisClient.get(`auction:${auctionId}:highest:bidder`);
-					this.io.to(String(winner)).emit('update', 'You won the auction');
-					return this.io.to(String(auctionId)).emit('closed', `Auction closed. Highest bid: ${highestBid}`);
-					
-				}
-
-				if (endTime && status === 'open'){
-					this.io.to(String(auctionId)).emit('countdown', await redisClient.ttl(`counter_${auctionId}`));
-				}
-			}, 1000);
-		}
-		
-		
-		socket.on('bid', async ()=> {
-			const status = await redisClient.get(`auction:${auctionId}:status`)
-			const bidIncrement = await redisClient.get(`auction:${auctionId}:bidIncrement`);
-			const user = socket.handshake.headers.user;
-			if (!user){
-				return socket.emit('appError', 'Client error. user header missing')
-			}
-			if (status === 'closed'){
-				return socket.emit('update', 'This auction has ended');
-			}
-			const standingBid = await redisClient.get(`standing:bid:${auctionId}`);
-			const userSocketId = await redisClient.get(`auction:${auction.id}:${user}:sessionId`)
-			await redisClient.set(`auction:${auctionId}:highest:bidder`, String(userSocketId));
-			if (standingBid && bidIncrement){
-				const newStandingBid = Number(standingBid) + Number(bidIncrement);
-				this.io.to(String(auctionId)).emit('update', newStandingBid);
-				await redisClient.set(`standing:bid:${auctionId}`, newStandingBid);
-			}
-			const timer = await redisClient.get(`auction:${auctionId}:timer`);
-			const endTime = Date.now() + Number(timer) * 1000;
-			await redisClient.set(`endtime_${auctionId}`,endTime.toString());
-			await redisClient.setEx(`counter_${auctionId}`, Number(timer), endTime.toString());
-			const currentAuction = await redisClient.get(`auction_${auctionId}`);
-			if (currentAuction){
-				const updateAuction = Auction.hydrate(JSON.parse(currentAuction));
-				if (updateAuction.bids){
-					updateAuction.bids.push(standingBid);
-					await updateAuction.save();
-				}
-			}
-		});
-
-		socket.on('customBid', async (arg) => {
-			const status = await redisClient.get(`auction:${auctionId}:status`)
-			const user = socket.handshake.headers.user;
-			if (status === 'closed'){
-				return socket.emit('update', 'This auction has ended');
-			}
-			if (!user){
-				return socket.emit('appError', 'Client error. user header missing')
-			}
-			const standingBid = await redisClient.get(`standing:bid:${auctionId}`);
-			if (standingBid && arg && Number(standingBid) >= Number(arg)){
-				return socket.emit('update', `Your bid of ${arg} should be higher than current standing bid of ${standingBid}`);
-			}
-			const userSocketId = await redisClient.get(`auction:${auction.id}:${user}:sessionId`)
-			await redisClient.set(`auction:${auctionId}:highest:bidder`, String(userSocketId));
-			await redisClient.set(`standing:bid:${auctionId}`, arg);
-			const timer = await redisClient.get(`auction:${auctionId}:timer`);
-			const endTime = Date.now() + Number(timer) * 1000;
-			await redisClient.set(`endtime_${auctionId}`,endTime.toString());
-			await redisClient.setEx(`counter_${auctionId}`, Number(timer), endTime.toString());
-			const currentAuction = await redisClient.get(`auction_${auctionId}`);
-			if (currentAuction){
-				const updateAuction = Auction.hydrate(JSON.parse(currentAuction));
-				if (updateAuction.bids){
-					updateAuction.bids.push(standingBid);
-					await updateAuction.save();
-				}
-			}
-		});
+		socket.on('bid', async () => {
+			console.log('bidding');
+			const auctionId = String(socket.handshake.query.id);
+			const standingBid = await this.auctionProcess.standingBid(auctionId)
+			const bid = new Bid(20000, Number(standingBid));
+			this.auctionProcess.placeBid(String(socket.handshake.query.id), bid);
+		})
 	}
-
 }
 
