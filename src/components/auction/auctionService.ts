@@ -8,33 +8,7 @@ import { redisClient } from "../../libraries/caching/redisCache";
  * 
  */
 
-class Bid {
-	bidAmount: number;
-	msg = '';
-	standingBid: number
 
-	constructor(bid: number, standingBid: number){
-		this.bidAmount = bid;
-		this.standingBid = standingBid
-	}
-
-	isValid(){
-		if (this.bidAmount < this.standingBid){
-			this.msg = 'Invalid: Bid should be higher or equal to current standing bid'
-			return false
-		}
-		this.msg = 'Valid Bid'
-		return true
-	}
-	getBidMsg(){
-		return this.msg
-	}
-
-	process(){
-		// add this bid to the job queue
-	}
-
-}
 
 class Timer {
 	io: Server;
@@ -107,7 +81,6 @@ class Timer {
 type auctionDataType = Awaited<ReturnType<typeof liveAuction.getAuctionById>>;
 class AuctionProcess {
 	timer: Timer;
-
 	constructor(timer: Timer){
 		this.timer = timer;
 	}
@@ -142,33 +115,48 @@ class AuctionProcess {
 		const amount = await redisClient.hGet(`auction:${auctionId}:process`, 'standingBid');
 		return Number(amount);
 	}
-
+	async updateStandingBid(auctionId: string, bid: number){
+		await redisClient.hSet(`auction:${auctionId}:process`, 'standingBid', bid);
+	}
 	async isActive(auctionId: string){
 		return await this.timer.isTimedOut(auctionId);
 	}
-
 
 	async close(auctionId: string){
 		await redisClient.hSet(`auction:${auctionId}:process`, 'status', 'closed');
 	}
 
-	async placeBid(auctionId: string, bid: Bid){
+	async startTimerIfNotOn(auctionId: string){
 		const timerStatus = await this.timer.isTimerOn(auctionId);
-		if (!timerStatus && bid.isValid()){
+		if (!timerStatus){
 			this.timer.countDown(auctionId);
 			await this.timer.setTimerOn(auctionId);
 		}
-		
-		if (bid.isValid()){
-			await this.timer.startCountDown(auctionId);
-			return bid.bidAmount;
-		}
+	}
+
+	async startCountDown(auctionId: string){
+		this.timer.startCountDown(auctionId);
+	}
+	async placeBid(auctionId: string){
+		this.startTimerIfNotOn(auctionId);
+		const currentBid = await this.bidIncrement(auctionId) + await this.standingBid(auctionId);
+		this.updateStandingBid(auctionId, currentBid);
+		return currentBid
+	}
+
+	async placeCustomBid(auctionId: string, amount: number){
+		this.startTimerIfNotOn(auctionId);
+		const standingBid = await this.standingBid(auctionId);
+		if (standingBid > amount) return new Error(`Bid rejected: Bid of ${amount} is lower than current standing bid: ${standingBid}`);
+		this.updateStandingBid(auctionId, amount);
+		return amount;
 	}
 }
 
 export class AuctionProcessFactory{
 	static createProcess(io: Server){
 		const timer = new Timer(io);
+		
 		return new AuctionProcess(timer);
 	}
 }
@@ -181,7 +169,21 @@ export default class AuctionService {
 		this.io = io;
 		this.auctionProcess = auctionProcess
 	}
+	async bid(auctionId: string){
+		
+		const bid = await this.auctionProcess.placeBid(auctionId);
+		this.io.to(auctionId).emit('update', `Current standing bid is: ${bid}`);
+		await this.auctionProcess.startCountDown(auctionId);
+	}
 
+	async customBid(auctionId: string, socket: Socket, amount: number){
+		const results = await this.auctionProcess.placeCustomBid(auctionId, amount);
+		if(results instanceof Error){
+			return socket.emit('appError', results.message);
+		}
+		this.io.to(auctionId).emit('update', `Current standing bid is: ${results}`);
+		await this.auctionProcess.startCountDown(auctionId);
+	}
 	async run(socket: Socket) {
 		const auctionId: string | undefined | string[] = socket.handshake.query.id;
 
@@ -194,14 +196,15 @@ export default class AuctionService {
 		}
 
 		socket.join(String(auctionId));
-		socket.emit('welcome', 'Welcome to the auction you can proceed to bid')
+		socket.emit('welcome', 'Welcome to the auction you can proceed to bid');
 		
 		socket.on('bid', async () => {
-			console.log('bidding');
 			const auctionId = String(socket.handshake.query.id);
-			const standingBid = await this.auctionProcess.standingBid(auctionId)
-			const bid = new Bid(20000, Number(standingBid));
-			this.auctionProcess.placeBid(String(socket.handshake.query.id), bid);
+			await this.bid(auctionId);
+		});
+		socket.on('custom bid', async (arg)=> {
+			const auctionId = String(socket.handshake.query.id);
+			await this.customBid(auctionId, socket, Number(arg));
 		})
 	}
 }
