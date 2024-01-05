@@ -1,16 +1,19 @@
 import { Server, Socket } from "socket.io";
 import liveAuction from "./auctionModel";
 import { redisClient } from "../../libraries/caching/redisCache";
+import EventEmitter from "events";
+import Auction from "./auction";
 
 /**
  *
  * service layer for the auction, interface to interact with other modules
  * 
  */
-class Timer {
+class Timer extends EventEmitter{
 	io: Server;
 
 	constructor(io: Server){
+		super();
 		this.io = io;
 	}
 
@@ -41,11 +44,11 @@ class Timer {
 	async isTimedOut(room: string){
 		const key = `auction:${room}:timer`;
 		const endTime = await redisClient.hGet(key, 'endTime');
-		
 		if (Number(endTime) !== 0 && Number(endTime) < Date.now()){
 			await redisClient.hSet(key, 'timedOut', 'true');
-			const counterId = await redisClient.hGet(key, 'counterId')
+			const counterId = await redisClient.hGet(key, 'counterId');
 			if (counterId) this.clearTimer(counterId);
+			this.emit('timed out', room)
 			return true
 		}
 		return false
@@ -72,13 +75,19 @@ class Timer {
 		await redisClient.hSet(`auction:${room}:timer`, 'counterId', String(counterId));
 	}
 
+	async clearCache(auctionId: string){
+		await redisClient.del(`auction:${auctionId}:timer`);
+	}
+
 }
 
 type auctionDataType = Awaited<ReturnType<typeof liveAuction.getAuctionById>>;
 class AuctionProcess {
 	timer: Timer;
-	constructor(timer: Timer){
+	io: Server
+	constructor(timer: Timer, io: Server){
 		this.timer = timer;
+		this.io = io;
 	}
 
 	static async isActivated(auctionId: string){
@@ -96,6 +105,7 @@ class AuctionProcess {
 					isActivated: 'true'
 				}
 			)
+			this.closeAuction();
 			this.timer.initTimer(auction.timer, auction.id);
 		}
 	}
@@ -120,10 +130,7 @@ class AuctionProcess {
 		return !open;
 	}
 
-	async close(auctionId: string){
-		await redisClient.hSet(`auction:${auctionId}:process`, 'status', 'closed');
-	}
-
+	
 	async startTimerIfNotOn(auctionId: string){
 		const timerStatus = await this.timer.isTimerOn(auctionId);
 		if (!timerStatus){
@@ -149,13 +156,24 @@ class AuctionProcess {
 		this.updateStandingBid(auctionId, amount);
 		return amount;
 	}
+	async clearCache(auctionId: string){
+		await redisClient.del(`auction:${auctionId}:process`)
+	}
+	closeAuction(){
+		this.timer.on('timed out', async (auctionId)=> {
+			const standingBid = await this.standingBid(auctionId);
+			this.io.to(auctionId).emit('close', `Auction has closed. Winning bid is Kshs.${standingBid}`);
+			this.clearCache(auctionId);
+			this.timer.clearCache(auctionId);
+		})
+	}
 }
 
 export class AuctionProcessFactory{
 	static createProcess(io: Server){
 		const timer = new Timer(io);
 		
-		return new AuctionProcess(timer);
+		return new AuctionProcess(timer, io);
 	}
 }
 
@@ -187,13 +205,24 @@ export default class AuctionService {
 		
 		return await this.auctionProcess.isOpen(auctionId);
 	}
-	async run(socket: Socket) {
-		const auctionId: string | undefined | string[] = socket.handshake.query.id;
 
-		const auction = await liveAuction.getAuctionById(String(auctionId));
+	async getAuction(auctionId: string){
+		const cachedAuction = await redisClient.get(`auction:${auctionId}`);
+		if (!cachedAuction){
+			const auction = await liveAuction.getAuctionById(auctionId);
+			await redisClient.set(`auction:${auctionId}`, JSON.stringify(auction));
+			return auction;
+		}
+		return Auction.hydrate(JSON.parse(cachedAuction));
+	}
+	async run(socket: Socket) {
+		const auctionId = socket.handshake.query.id;
+		const auction = await this.getAuction(String(auctionId));
+
+		if (auction?.status === 'closed') return socket.emit('appError', 'This auction is closed');
+		if (auction?.status === 'pending') return socket.emit('appError', `This auction will start on ${auction.startDate}`);
 		
 		const isActivated = await AuctionProcess.isActivated(auction?.id);
-
 		if (!isActivated){
 			this.auctionProcess.initAuctionProcess(auction);
 		}
@@ -213,6 +242,7 @@ export default class AuctionService {
 			if (!takeBid) return socket.emit('close', 'This auction has closed');
 			await this.customBid(auctionId, socket, Number(arg));
 		})
+
 	}
 }
 
