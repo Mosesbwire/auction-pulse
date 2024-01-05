@@ -7,9 +7,6 @@ import { redisClient } from "../../libraries/caching/redisCache";
  * service layer for the auction, interface to interact with other modules
  * 
  */
-
-
-
 class Timer {
 	io: Server;
 
@@ -30,13 +27,11 @@ class Timer {
 	}
 
 	async startCountDown(room: string){
-	
 		const key = `auction:${room}:timer`;
 		const timer = await redisClient.hGet(key, 'auctionTimer');
 		const newEndTime = Date.now() + Number(timer) * 1000;
 		await redisClient.hSet(key, 'endTime', newEndTime);
-		await redisClient.setEx(`ttl:key:${room}`, Number(timer), String(newEndTime));
-	
+		await redisClient.setEx(`ttl:key:${room}`, Number(timer), String(newEndTime));	
 	}
 
 	clearTimer(timerId: string){
@@ -46,7 +41,8 @@ class Timer {
 	async isTimedOut(room: string){
 		const key = `auction:${room}:timer`;
 		const endTime = await redisClient.hGet(key, 'endTime');
-		if (Number(endTime) < Date.now()){
+		
+		if (Number(endTime) !== 0 && Number(endTime) < Date.now()){
 			await redisClient.hSet(key, 'timedOut', 'true');
 			const counterId = await redisClient.hGet(key, 'counterId')
 			if (counterId) this.clearTimer(counterId);
@@ -104,8 +100,6 @@ class AuctionProcess {
 		}
 	}
 
-	// add function to update standing bid
-
 	async bidIncrement(auctionId: string){
 		const amount = await redisClient.hGet(`auction:${auctionId}:process`, 'bidIncrement');
 		return Number(amount);
@@ -115,11 +109,15 @@ class AuctionProcess {
 		const amount = await redisClient.hGet(`auction:${auctionId}:process`, 'standingBid');
 		return Number(amount);
 	}
+
 	async updateStandingBid(auctionId: string, bid: number){
 		await redisClient.hSet(`auction:${auctionId}:process`, 'standingBid', bid);
 	}
-	async isActive(auctionId: string){
-		return await this.timer.isTimedOut(auctionId);
+
+	async isOpen(auctionId: string){
+		const open = await this.timer.isTimedOut(auctionId);
+		console.log(open);
+		return !open;
 	}
 
 	async close(auctionId: string){
@@ -184,6 +182,11 @@ export default class AuctionService {
 		this.io.to(auctionId).emit('update', `Current standing bid is: ${results}`);
 		await this.auctionProcess.startCountDown(auctionId);
 	}
+
+	async takeBid(auctionId: string){
+		
+		return await this.auctionProcess.isOpen(auctionId);
+	}
 	async run(socket: Socket) {
 		const auctionId: string | undefined | string[] = socket.handshake.query.id;
 
@@ -200,10 +203,14 @@ export default class AuctionService {
 		
 		socket.on('bid', async () => {
 			const auctionId = String(socket.handshake.query.id);
+			const takeBid = await this.takeBid(auctionId);
+			if (!takeBid) return socket.emit('close', 'This auction has closed');
 			await this.bid(auctionId);
 		});
 		socket.on('custom bid', async (arg)=> {
 			const auctionId = String(socket.handshake.query.id);
+			const takeBid = await this.takeBid(auctionId);
+			if (!takeBid) return socket.emit('close', 'This auction has closed');
 			await this.customBid(auctionId, socket, Number(arg));
 		})
 	}
