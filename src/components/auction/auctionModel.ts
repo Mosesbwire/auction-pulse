@@ -6,6 +6,7 @@ import mongoose, { ObjectId } from 'mongoose';
 import AppError from "../../libraries/error";
 import { error } from "../../libraries/constants";
 import { asyncWrapper } from "../../libraries/utils/asyncWrapper";
+import { Job } from "bull";
 
 interface IAuction {
 	auctioneer: ObjectId,
@@ -19,6 +20,7 @@ interface Item {
 	description? : string,
 	reservePrice: number
 }
+
 class LiveAuction {
 	/**
 	 * creates instance of auction and save to database
@@ -51,8 +53,8 @@ class LiveAuction {
 	}
 
 	async getAuctions(userId: string){
-		const results = await asyncWrapper(Auction.find({ auctioneer: new mongoose.Types.ObjectId(userId)}));
-		
+		const results = await asyncWrapper(Auction.find({}));
+		console.log(userId)
 		if (results.error){
 			throw new AppError('DatabaseError', 'Failure in db', false)
 		}
@@ -94,6 +96,19 @@ class LiveAuction {
 		if (data.deletedCount === 0) return 'Failed to delete document'
 		return 'Document deleted'
 		
+	}
+	
+	async updateAuctionBid(job: Job) {
+		
+		const data = job.data
+		const results = await asyncWrapper(Auction.findById(data.id));
+		if (results.error) throw results.error;
+		const auction = results.data;
+		if (auction){
+			auction.bids.push(data.bid);
+			await auction.save();
+		}
+		return Promise.resolve(auction)
 	}
 	
 }

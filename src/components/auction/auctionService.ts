@@ -3,7 +3,7 @@ import liveAuction from "./auctionModel";
 import { redisClient } from "../../libraries/caching/redisCache";
 import EventEmitter from "events";
 import Auction from "./auction";
-
+import { bidQueue } from "../../jobs/queue";
 /**
  *
  * service layer for the auction, interface to interact with other modules
@@ -126,7 +126,7 @@ class AuctionProcess {
 
 	async isOpen(auctionId: string){
 		const open = await this.timer.isTimedOut(auctionId);
-		console.log(open);
+		
 		return !open;
 	}
 
@@ -142,10 +142,16 @@ class AuctionProcess {
 	async startCountDown(auctionId: string){
 		this.timer.startCountDown(auctionId);
 	}
+
+	async addBidToQueue(auctionId: string, bid: number){
+		console.log('adding to queue')
+		bidQueue.add({id: auctionId, bid})
+	}
 	async placeBid(auctionId: string){
 		this.startTimerIfNotOn(auctionId);
 		const currentBid = await this.bidIncrement(auctionId) + await this.standingBid(auctionId);
 		this.updateStandingBid(auctionId, currentBid);
+		await this.addBidToQueue(auctionId, currentBid);
 		return currentBid
 	}
 
@@ -154,6 +160,7 @@ class AuctionProcess {
 		const standingBid = await this.standingBid(auctionId);
 		if (standingBid > amount) return new Error(`Bid rejected: Bid of ${amount} is lower than current standing bid: ${standingBid}`);
 		this.updateStandingBid(auctionId, amount);
+		await this.addBidToQueue(auctionId, amount);
 		return amount;
 	}
 	async clearCache(auctionId: string){
