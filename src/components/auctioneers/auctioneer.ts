@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
+import { generateAuthToken } from "../../libraries/authentication";
 
 const Schema = mongoose.Schema;
 interface IAuctioneer {
     firstName: string,
     lastName: string,
     email: string,
-    password: string
+    password: string,
+    apiKey: string
 }
 
 const AuctioneerSchema = new Schema<IAuctioneer>({
@@ -34,9 +36,22 @@ const AuctioneerSchema = new Schema<IAuctioneer>({
         type: String,
         required: true,
         minlength: 6
+    },
+    apiKey: {
+        type: String,
     }
 });
 
+AuctioneerSchema.pre('save', async function() {
+    const payload = {
+        id: this._id,
+        name: `${this.firstName} ${this.lastName}`
+    }
+    if (this.isNew){
+        const token = await generateAuthToken(payload)
+        this.apiKey = token
+    }
+});
 export const Auctioneer = mongoose.model<IAuctioneer>('Auctioneer', AuctioneerSchema);
 module.exports = {
     Auctioneer

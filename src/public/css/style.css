@@ -43,7 +43,13 @@ table {
 }
 
 
-
 .form-container > form {
 	width: 450px;
-} 
+}
+
+.sidebar-menu {
+	/* border: 2px solid green; */
+}
+.documentation {
+	
+}

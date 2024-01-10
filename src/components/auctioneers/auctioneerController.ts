@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { asyncWrapper } from "../../libraries/utils/asyncWrapper";
 import auctioneer from "./auctioneerModel";
 import AppError from "../../libraries/error";
-import { hashPassword, isCorrectPassword, generateAuthToken } from "../../libraries/authentication";
+import { hashPassword, isCorrectPassword } from "../../libraries/authentication";
 
 /**
  * creates a new user document
@@ -15,13 +15,11 @@ export async function create(req: Request, res: Response, next: NextFunction) {
 	const { firstName, lastName, email, password } = req.body;
 	try {
 		const hashedPassword = await hashPassword(password);
-		const results = await auctioneer.create({firstName, lastName, email, password: hashedPassword});
-		const payload = {
-			id: results.id,
-			name: `${results.firstName} ${results.lastName}`
-		}
-		const token = await generateAuthToken(payload);
-		res.status(201).json({message: 'Welcome. Account was successfully created', token});
+		const user = await auctioneer.create({firstName, lastName, email, password: hashedPassword});
+		
+		// res.status(201).json({message: 'Welcome. Account was successfully created', token});
+		res.redirect(`/api/v1/auctions/dashboard?key=${user.apiKey}`);
+
 	} catch(err) {
 		if (err instanceof AppError && err.name === 'ValidationError'){
 			const error = new AppError(err.name, err.message, err.isOperational, 400)
@@ -54,13 +52,10 @@ export async function login(req: Request, res: Response, next: NextFunction){
 	if (!isValidPassword){
 		return next(new AppError('IncorrectCredentials', 'Invalid Email/Password', true, 400))
 	}
-	// const payload = {
-	// 	id: user?.id,
-	// 	name: `${user?.firstName} ${user?.lastName}`
-	// }
-	// const token = await generateAuthToken(payload);
+	
 	// res.status(200).json({message: 'successfully logged in', token});
-	res.redirect('/api/v1/auctions/dashboard');
+	
+	res.redirect(`/api/v1/auctions/dashboard?key=${user?.apiKey}`);
 }
 
 export function renderLoginPage(req: Request, res: Response){
@@ -68,7 +63,7 @@ export function renderLoginPage(req: Request, res: Response){
 }
 
 export function renderSignUpPage(req: Request, res: Response){
-	res.render('../views/pages/signup')
+	res.render('../views/pages/signup', {action: '/api/v1/auctioneers'})
 }
 
 

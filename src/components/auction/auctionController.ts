@@ -49,6 +49,8 @@ export async function deleteAuction(req: Request, res: Response, next: NextFunct
 }
 
 export function renderDashboard(req:Request, res:Response){
-	res.render('../views/pages/dashboard');
+	const { key } = req.query
+	
+	res.render('../views/pages/dashboard', { key });
 }
 

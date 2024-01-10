@@ -11,6 +11,7 @@ interface UserData {
 	lastName: string,
 	email: string,
 	password: string,
+	
 }
 class Auctioneer {
 	/**
@@ -21,6 +22,7 @@ class Auctioneer {
 	async create(userData:UserData){
 		try {
 			let user = new User(userData);
+			
 			user = await user.save();
 			return user;
 		} catch (err){

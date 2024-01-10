@@ -61,6 +61,7 @@ class LiveAuction {
 		return results.data
 	}
 	async getAuctionById(auctionId: string) {
+		
 		const results = await asyncWrapper(Auction.findById(auctionId));
 		if (results.error){
 			throw new AppError('DatabaseError', 'Failure in db', false);
