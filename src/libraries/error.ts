@@ -36,6 +36,7 @@ export async function errorHandler(error: AppError | Error, res?: Response): Pro
 	//error logging should be done here
 	if (error instanceof AppError){
 		if (error.isOperational && res) {
+			console.log(error);
 			return res.status(error.statusCode).json({error: {name: error.name, message: error.message, errors: error.errors}})
 		} else if (error.name === 'DatabaseConnectionError'){
 			console.log('retrying connection to db...')
@@ -46,6 +47,7 @@ export async function errorHandler(error: AppError | Error, res?: Response): Pro
 		// we can retry connecting before ultimately quiting
 		console.log('Connection error...')
 	}
+	console.log(error);
 	console.log('Exiting....')
 	//send alerts
 	//restart application depending on error

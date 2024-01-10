@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { Request } from 'express';
 import strategy, { JwtFromRequestFunction } from 'passport-jwt';
 import passport from 'passport';
 import bcrypt from 'bcrypt';
@@ -52,7 +53,13 @@ interface Ioptions {
 	secretOrKey: string
 }
 
+interface Ipayload {
+	id: string,
+	name: string
+}
+type cb = (a: null | Error, payload: Ipayload) => void;
 export function registerJWTstrategy(){
+
 	const SECRET_KEY = process.env.SECRET_KEY;
 	if (!SECRET_KEY){
 		throw new AppError('ENVVARIABLEERR', 'missing environment variable \'SECRET_KEY\'', false)
@@ -61,13 +68,13 @@ export function registerJWTstrategy(){
 	const opts: Ioptions  = {
 		jwtFromRequest: extractJwt.fromAuthHeaderAsBearerToken(),
 		ignoreExpiration: false,
-		passReqToCallback: false,
+		passReqToCallback: true,
 		algorithms: ['HS256', 'HS384', 'HS512'],
 		secretOrKey: SECRET_KEY
 	}
 	
-	passport.use(new jwtStrategy(opts, async (payload, done) => {
-		
+	passport.use(new jwtStrategy(opts, async (req: Request, payload: Ipayload, done: cb) => {
+		req.params.user = payload.id
 		done(null,payload )
 	}));
 
