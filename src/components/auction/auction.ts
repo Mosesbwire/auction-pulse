@@ -53,12 +53,6 @@ const AuctionSchema = new Schema({
     },
     winner: {
         type: String,
-        validate: {
-            validator: function (value: string) {
-                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-            },
-            message: 'Invalid email address format'
-        }
     },
     item: ItemSchema
 })
