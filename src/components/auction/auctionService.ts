@@ -3,7 +3,7 @@ import liveAuction from "./auctionModel";
 import { redisClient } from "../../libraries/caching/redisCache";
 import EventEmitter from "events";
 import Auction from "./auction";
-import { bidQueue } from "../../jobs/queue";
+import jobQueue from "../../jobs/queue";
 /**
  *
  * service layer for the auction, interface to interact with other modules
@@ -46,9 +46,9 @@ class Timer extends EventEmitter{
 		const endTime = await redisClient.hGet(key, 'endTime');
 		if (Number(endTime) !== 0 && Number(endTime) < Date.now()){
 			await redisClient.hSet(key, 'timedOut', 'true');
+			this.emit('timed out', room)
 			const counterId = await redisClient.hGet(key, 'counterId');
 			if (counterId) this.clearTimer(counterId);
-			this.emit('timed out', room)
 			return true
 		}
 		return false
@@ -81,6 +81,13 @@ class Timer extends EventEmitter{
 
 }
 
+
+
+
+
+
+
+
 type auctionDataType = Awaited<ReturnType<typeof liveAuction.getAuctionById>>;
 class AuctionProcess {
 	timer: Timer;
@@ -102,11 +109,12 @@ class AuctionProcess {
 					bidIncrement: auction.bidIncrement,
 					standingBid: auction.item.reservePrice,
 					status: auction.status,
-					isActivated: 'true'
+					isActivated: 'true',
+					highestBidder: ''
 				}
 			)
-			this.closeAuction();
 			this.timer.initTimer(auction.timer, auction.id);
+			this.closeAuction();
 		}
 	}
 
@@ -124,9 +132,16 @@ class AuctionProcess {
 		await redisClient.hSet(`auction:${auctionId}:process`, 'standingBid', bid);
 	}
 
+	async highestBidder(auctionId: string){
+		const bidder = await redisClient.hGet(`auction:${auctionId}:process`, 'highestBidder');
+		return bidder;
+	}
+	async updateHighestBidder(auctionId: string, userId: string) {
+		await redisClient.hSet(`auction:${auctionId}:process`, 'highestBidder', userId)
+	}
+
 	async isOpen(auctionId: string){
 		const open = await this.timer.isTimedOut(auctionId);
-		
 		return !open;
 	}
 
@@ -144,13 +159,17 @@ class AuctionProcess {
 	}
 
 	async addBidToQueue(auctionId: string, bid: number){
-		console.log('adding to queue')
-		bidQueue.add({id: auctionId, bid})
+		
+		jobQueue.add('bids', {id: auctionId, bid})
 	}
+	async updateAuction(auctionId: string, winner: string){
+		jobQueue.add('close auction', {id: auctionId, winner})
+	}
+
 	async placeBid(auctionId: string){
 		this.startTimerIfNotOn(auctionId);
 		const currentBid = await this.bidIncrement(auctionId) + await this.standingBid(auctionId);
-		this.updateStandingBid(auctionId, currentBid);
+		await this.updateStandingBid(auctionId, currentBid);
 		await this.addBidToQueue(auctionId, currentBid);
 		return currentBid
 	}
@@ -168,13 +187,34 @@ class AuctionProcess {
 	}
 	closeAuction(){
 		this.timer.on('timed out', async (auctionId)=> {
+			
 			const standingBid = await this.standingBid(auctionId);
 			this.io.to(auctionId).emit('close', `Auction has closed. Winning bid is Kshs.${standingBid}`);
+			const winner = await this.highestBidder(auctionId);
+			await this.updateAuction(auctionId, String(winner));
 			this.clearCache(auctionId);
 			this.timer.clearCache(auctionId);
+			
 		})
 	}
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export class AuctionProcessFactory{
 	static createProcess(io: Server){
@@ -208,6 +248,10 @@ export default class AuctionService {
 		await this.auctionProcess.startCountDown(auctionId);
 	}
 
+	async updateHighestBidder(auctionId: string, userId: string) {
+		await this.auctionProcess.updateHighestBidder(auctionId, userId);
+	}
+
 	async takeBid(auctionId: string){
 		
 		return await this.auctionProcess.isOpen(auctionId);
@@ -222,8 +266,10 @@ export default class AuctionService {
 		}
 		return Auction.hydrate(JSON.parse(cachedAuction));
 	}
+
 	async run(socket: Socket) {
 		const auctionId = socket.handshake.query.id;
+		
 		const auction = await this.getAuction(String(auctionId));
 
 		if (auction?.status === 'closed') return socket.emit('appError', 'This auction is closed');
@@ -238,16 +284,22 @@ export default class AuctionService {
 		socket.emit('welcome', 'Welcome to the auction you can proceed to bid');
 		
 		socket.on('bid', async () => {
+			console.log('bidding')
 			const auctionId = String(socket.handshake.query.id);
+			const userId = socket.handshake.auth.userId
 			const takeBid = await this.takeBid(auctionId);
 			if (!takeBid) return socket.emit('close', 'This auction has closed');
 			await this.bid(auctionId);
+			await this.updateHighestBidder(auctionId, userId);
 		});
 		socket.on('custom bid', async (arg)=> {
 			const auctionId = String(socket.handshake.query.id);
+			const userId = socket.handshake.auth.userId
 			const takeBid = await this.takeBid(auctionId);
 			if (!takeBid) return socket.emit('close', 'This auction has closed');
 			await this.customBid(auctionId, socket, Number(arg));
+			await this.updateHighestBidder(auctionId, userId);
+
 		})
 
 	}
