@@ -20,7 +20,17 @@ const PORT = process.env.PORT || 3000;
 const DB_URL = process.env.MONGO_URL || ''
 const app = express();
 const server = createServer(app);
-const io:Server = new Server(server);
+const io:Server = new Server(server, {
+    cors: {
+        origin: "*"
+    }
+});
+
+// io.use((socket, next) => {
+//     const token = socket.handshake.auth.token
+    
+//     next()
+// })
 
 
 
