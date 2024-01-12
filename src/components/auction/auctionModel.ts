@@ -6,12 +6,14 @@ import mongoose, { ObjectId } from 'mongoose';
 import AppError from "../../libraries/error";
 import { error } from "../../libraries/constants";
 import { asyncWrapper } from "../../libraries/utils/asyncWrapper";
-import { Job } from "bull";
+import jobQueue from "../../jobs/queue";
 
 interface IAuction {
 	auctioneer: ObjectId,
-	startDate: Date,
+	startDate: string,
+	start: boolean,
 	bidIncrement: number,
+	timer: number
 	name?: string
 }
 
@@ -32,15 +34,36 @@ class LiveAuction {
 		
 		// auctionData.startDate = new Date(Date.now() + 5 * 3600 * 1000);
 		try {
-			let auction = new Auction({ ...auctionData, item: itemData })
-			auction = await auction.save()
+			const data = {
+				auctioneer: auctionData.auctioneer,
+				startDate: new Date(auctionData.startDate),
+				bidIncrement: auctionData.bidIncrement,
+				name: auctionData.name,
+				timer: auctionData.timer,
+				status: 'pending'
+			}
+
+			if (!this.isValidStartDate(auctionData.start, new Date(auctionData.startDate))) throw new AppError('ClientError', 'Invalid Date', true, 401);
+
+			if (auctionData.start) {
+				data.startDate = new Date(Date.now());
+				data.status = 'open';
+			}
+			
+			let auction = new Auction({ ...data, item: itemData });
+			auction = await auction.save();
+			if (auction.status === 'pending'){
+
+				const timeTillActivateAuction = auction.startDate.getTime() - Date.now();
+				jobQueue.add('activate auction', {id: auction.id}, {delay: timeTillActivateAuction});
+			}
 			return auction
 		} catch(err){
 			if (err instanceof mongoose.Error.ValidationError){
 				const errorArray: error[] = [] 
 				
 				for (const [key, val] of Object.entries(err.errors)){
-					const error: error = {};
+					const error: error = {}; 
 					error[key] = val.message;
 					errorArray.push(error)	
 				}
@@ -48,10 +71,18 @@ class LiveAuction {
 				appError.setErrors(errorArray);
 				throw appError;
 			}
+			if (err instanceof AppError) throw err;
 			throw new AppError('ServerError', 'exception occured in Auction model', false);
 		}
 	}
+	isValidStartDate(start: boolean, date: Date){
+		const now = new Date(Date.now());
+		if (!start && now > date) return false
+		if (!start && now < date) return true
+		return start
+	}
 
+	
 	async getAuctions(userId: string){
 		const results = await asyncWrapper(Auction.find({}));
 		console.log(userId)
@@ -97,19 +128,6 @@ class LiveAuction {
 		if (data.deletedCount === 0) return 'Failed to delete document'
 		return 'Document deleted'
 		
-	}
-	
-	async updateAuctionBid(job: Job) {
-		
-		const data = job.data
-		const results = await asyncWrapper(Auction.findById(data.id));
-		if (results.error) throw results.error;
-		const auction = results.data;
-		if (auction){
-			auction.bids.push(data.bid);
-			await auction.save();
-		}
-		return Promise.resolve(auction)
 	}
 	
 }
