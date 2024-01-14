@@ -10,6 +10,7 @@ export default async function connectToDb(url: string): Promise<void> {
 		await mongoose.connect(url);
 		console.log('Connected to mongoDb');
 	} catch (err) {
+		console.log(err);
 		throw new AppError('DatabaseConnectionError', 'Failed to connect to mongoDB', false);
 	}
 }

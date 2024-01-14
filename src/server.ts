@@ -15,9 +15,10 @@ import { registerJWTstrategy } from './libraries/authentication';
 import AuctionService from './components/auction/auctionService';
 import passport from 'passport';
 
-dotenv.config({
-    path: process.env.NODE_ENV === 'PRODUCTION' ? '.env' : '.env.development.local'
-});
+// dotenv.config({
+//     path: process.env.NODE_ENV === 'PRODUCTION' ? '.env' : '.env.development.local'
+// });
+dotenv.config();
 const PORT = process.env.PORT || 3000; 
 const DB_URL = process.env.MONGO_URL || ''
 

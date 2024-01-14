@@ -13,7 +13,9 @@ class Redis {
 			})
 		} else {
 
-			this.client = createClient();
+			this.client = createClient({
+				url: process.env.REDIS_URL_DEV
+			});
 		}
 	}
 
