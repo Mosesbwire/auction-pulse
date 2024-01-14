@@ -4,6 +4,7 @@ import auctioneer from "./auctioneerModel";
 import AppError from "../../libraries/error";
 import { hashPassword, isCorrectPassword } from "../../libraries/authentication";
 
+
 /**
  * creates a new user document
  * @param req 
@@ -59,11 +60,11 @@ export async function login(req: Request, res: Response, next: NextFunction){
 }
 
 export function renderLoginPage(req: Request, res: Response){
-	res.render('../views/pages/login');
+	res.render('login');
 }
 
 export function renderSignUpPage(req: Request, res: Response){
-	res.render('../views/pages/signup', {action: '/api/v1/auctioneers'})
+	res.render('signup', {action: '/api/v1/auctioneers'})
 }
 
 

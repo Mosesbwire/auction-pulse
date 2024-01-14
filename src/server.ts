@@ -11,7 +11,6 @@ import { auctionApi } from './components/auction';
 import { AuctionProcessFactory } from './components/auction/auctionService';
 import { registerJWTstrategy } from './libraries/authentication';
 
-
 import AuctionService from './components/auction/auctionService';
 import passport from 'passport';
 
@@ -44,6 +43,7 @@ try {
 //create config file export when dotenv is initialized
 
 registerJWTstrategy(SECRET_KEY);
+
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
