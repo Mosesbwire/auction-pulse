@@ -118,6 +118,14 @@ class AuctionProcess {
 		}
 	}
 
+	async setAuction(auction: auctionDataType) {
+		await redisClient.set(`auction:${auction.id}`, JSON.stringify(auction));
+	}
+
+	async auction(auctionId: string) {
+		const auction = await redisClient.get(`auction:${auctionId}`);
+		if (auction) return Auction.hydrate(JSON.parse(auction));
+	}
 	async bidIncrement(auctionId: string){
 		const amount = await redisClient.hGet(`auction:${auctionId}:process`, 'bidIncrement');
 		return Number(amount);
@@ -183,7 +191,8 @@ class AuctionProcess {
 		return amount;
 	}
 	async clearCache(auctionId: string){
-		await redisClient.del(`auction:${auctionId}:process`)
+		await redisClient.del(`auction:${auctionId}:process`);
+		await redisClient.del(`auction:${auctionId}`);
 	}
 	closeAuction(){
 		this.timer.on('timed out', async (auctionId)=> {
@@ -258,13 +267,13 @@ export default class AuctionService {
 	}
 
 	async getAuction(auctionId: string){
-		const cachedAuction = await redisClient.get(`auction:${auctionId}`);
-		if (!cachedAuction){
-			const auction = await liveAuction.getAuctionById(auctionId);
-			await redisClient.set(`auction:${auctionId}`, JSON.stringify(auction));
-			return auction;
+		const auction = await this.auctionProcess.auction(auctionId);
+		if (!auction) {
+			const data = await liveAuction.getAuctionById(auctionId);
+			if (data) await this.auctionProcess.setAuction(data);
+			return data
 		}
-		return Auction.hydrate(JSON.parse(cachedAuction));
+		return auction
 	}
 
 	async run(socket: Socket) {
