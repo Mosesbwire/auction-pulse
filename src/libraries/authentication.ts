@@ -64,19 +64,14 @@ interface Ipayload {
 	name: string
 }
 type cb = (a: null | Error, payload: Ipayload) => void;
-export function registerJWTstrategy(){
-
-	const SECRET_KEY = process.env.SECRET_KEY;
-	if (!SECRET_KEY){
-		throw new AppError('ENVVARIABLEERR', 'missing environment variable \'SECRET_KEY\'', false)
-	}
+export function registerJWTstrategy(key: string){
 
 	const opts: Ioptions  = {
 		jwtFromRequest: extractJwt.fromAuthHeaderAsBearerToken(),
 		ignoreExpiration: false,
 		passReqToCallback: true,
 		algorithms: ['HS256', 'HS384', 'HS512'],
-		secretOrKey: SECRET_KEY
+		secretOrKey: key
 	}
 	
 	passport.use(new jwtStrategy(opts, async (req: Request, payload: Ipayload, done: cb) => {

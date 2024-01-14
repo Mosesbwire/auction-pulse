@@ -9,15 +9,19 @@ import AppError, { errorHandler } from './libraries/error';
 import { auctioneerApi } from './components/auctioneers'
 import { auctionApi } from './components/auction';
 import { AuctionProcessFactory } from './components/auction/auctionService';
+import { registerJWTstrategy } from './libraries/authentication';
+
 
 import AuctionService from './components/auction/auctionService';
 import passport from 'passport';
 
 dotenv.config({
-    path: process.env.NODE_ENV === 'production' ? '.env' : '.env.development.local'
+    path: process.env.NODE_ENV === 'PRODUCTION' ? '.env' : '.env.development.local'
 });
 const PORT = process.env.PORT || 3000; 
 const DB_URL = process.env.MONGO_URL || ''
+
+const SECRET_KEY = process.env.SECRET_KEY || ''
 const app = express();
 const server = createServer(app);
 const io:Server = new Server(server, {
@@ -37,9 +41,8 @@ try {
 
 // todo - dotenv configuration setting environment variables should happen first. 
 //create config file export when dotenv is initialized
-import { registerJWTstrategy } from './libraries/authentication';
 
-registerJWTstrategy();
+registerJWTstrategy(SECRET_KEY);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
