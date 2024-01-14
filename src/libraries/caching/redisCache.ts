@@ -7,7 +7,14 @@ import AppError from "../error";
 class Redis {
   client: RedisClientType;
   constructor(){
-		this.client = createClient();
+		if (process.env.NODE_ENV === 'PRODUCTION'){
+			this.client = createClient({
+				url: process.env.REDIS_URL
+			})
+		} else {
+
+			this.client = createClient();
+		}
 	}
 
 	async connectRedis(){
