@@ -270,7 +270,7 @@ export default class AuctionService {
 		const auction = await this.auctionProcess.auction(auctionId);
 		if (!auction) {
 			const data = await liveAuction.getAuctionById(auctionId);
-			if (data) await this.auctionProcess.setAuction(data);
+			if (data && data.status === 'open') await this.auctionProcess.setAuction(data);
 			return data
 		}
 		return auction
@@ -280,9 +280,19 @@ export default class AuctionService {
 		const auctionId = socket.handshake.query.id;
 		
 		const auction = await this.getAuction(String(auctionId));
+		if (!auction) {
+			
+			return socket.emit('appError', 'Auction Not Found');
+		}
 
-		if (auction?.status === 'closed') return socket.emit('appError', 'This auction is closed');
-		if (auction?.status === 'pending') return socket.emit('appError', `This auction will start on ${auction.startDate}`);
+		if (auction.status === 'closed'){
+			
+			return socket.emit('appError', 'This auction is closed');
+		}
+		if (auction.status === 'pending'){
+
+			return socket.emit('appError', `This auction will start on ${auction.startDate}`);
+		} 
 		
 		const isActivated = await AuctionProcess.isActivated(auction?.id);
 		if (!isActivated){
