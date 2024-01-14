@@ -108,6 +108,7 @@ class AuctionProcess {
 				{
 					bidIncrement: auction.bidIncrement,
 					standingBid: auction.item.reservePrice,
+					item: auction.item.title,
 					status: auction.status,
 					isActivated: 'true',
 					highestBidder: ''
@@ -146,6 +147,10 @@ class AuctionProcess {
 	}
 	async updateHighestBidder(auctionId: string, userId: string) {
 		await redisClient.hSet(`auction:${auctionId}:process`, 'highestBidder', userId)
+	}
+
+	async item(auctionId: string) {
+		return await redisClient.hGet(`auction:${auctionId}:process`, 'item');
 	}
 
 	async isOpen(auctionId: string){
@@ -198,7 +203,8 @@ class AuctionProcess {
 		this.timer.on('timed out', async (auctionId)=> {
 			
 			const standingBid = await this.standingBid(auctionId);
-			this.io.to(auctionId).emit('close', `Auction has closed. Winning bid is Kshs.${standingBid}`);
+			const item = await this.item(auctionId);
+			this.io.to(auctionId).emit('close', {standingBid, item, message: 'This auction has closed.'});
 			const winner = await this.highestBidder(auctionId);
 			await this.updateAuction(auctionId, String(winner));
 			this.clearCache(auctionId);
@@ -244,16 +250,16 @@ export default class AuctionService {
 	async bid(auctionId: string){
 		
 		const bid = await this.auctionProcess.placeBid(auctionId);
-		this.io.to(auctionId).emit('update', `Current standing bid is: ${bid}`);
+		this.io.to(auctionId).emit('update', {bid});
 		await this.auctionProcess.startCountDown(auctionId);
 	}
 
 	async customBid(auctionId: string, socket: Socket, amount: number){
 		const results = await this.auctionProcess.placeCustomBid(auctionId, amount);
 		if(results instanceof Error){
-			return socket.emit('appError', results.message);
+			return socket.emit('appError', {name: 'ClientError', message: 'Invalid bid amount', status: 400});
 		}
-		this.io.to(auctionId).emit('update', `Current standing bid is: ${results}`);
+		this.io.to(auctionId).emit('update', {bid: results});
 		await this.auctionProcess.startCountDown(auctionId);
 	}
 
@@ -282,16 +288,16 @@ export default class AuctionService {
 		const auction = await this.getAuction(String(auctionId));
 		if (!auction) {
 			
-			return socket.emit('appError', 'Auction Not Found');
+			return socket.emit('appError', {name: 'ClientError', message: 'Auction not found', status: 404});
 		}
 
 		if (auction.status === 'closed'){
 			
-			return socket.emit('appError', 'This auction is closed');
+			return socket.emit('appError', {name: 'ClientError', message: 'This auction is closed', status: 400});
 		}
 		if (auction.status === 'pending'){
 
-			return socket.emit('appError', `This auction will start on ${auction.startDate}`);
+			return socket.emit('appError', {name: 'ClientError', message: `This auction will start on ${auction.startDate}`, status: 400});
 		} 
 		
 		const isActivated = await AuctionProcess.isActivated(auction?.id);
@@ -300,10 +306,10 @@ export default class AuctionService {
 		}
 
 		socket.join(String(auctionId));
-		socket.emit('welcome', 'Welcome to the auction you can proceed to bid');
+		socket.emit('welcome', {bidIncrement: auction.bidIncrement, item: auction.item?.title, reservePrice: auction.item?.reservePrice});
 		
 		socket.on('bid', async () => {
-			console.log('bidding')
+		
 			const auctionId = String(socket.handshake.query.id);
 			const userId = socket.handshake.auth.userId
 			const takeBid = await this.takeBid(auctionId);
@@ -316,7 +322,8 @@ export default class AuctionService {
 			const userId = socket.handshake.auth.userId
 			const takeBid = await this.takeBid(auctionId);
 			if (!takeBid) return socket.emit('close', 'This auction has closed');
-			await this.customBid(auctionId, socket, Number(arg));
+			if (!arg.bid) return socket.emit('appError', {name: 'ClientError', message: 'Bid missing', status: 400});
+			await this.customBid(auctionId, socket, Number(arg.bid));
 			await this.updateHighestBidder(auctionId, userId);
 
 		})
