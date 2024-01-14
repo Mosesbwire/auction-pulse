@@ -50,6 +50,47 @@ table {
 .sidebar-menu {
 	/* border: 2px solid green; */
 }
-.documentation {
-	
+
+.documentation-content {
+	width: 90%;
+	margin-inline: auto;
+}
+
+.base-url {
+	display: block;
+	padding-inline: 1em;
+	padding-block: 1.5em;
+	background-color: cadetblue;
+	color: whitesmoke;
+	border-radius: .25em;
+}
+
+.warning {
+	display: block;
+	padding-block: 1.5em;
+	padding-inline-start: 1em;
+	border-radius: .25em;
+	background-color: rgb(252, 163, 163);
+}
+
+.code {
+	display: block;
+	padding-inline-start: .5em;
+	padding-block: 1.5em;
+	border: 1px solid lightgray;
+	border-radius: .25em;
+	background-color: rgb(243, 252, 255);
+	margin-bottom: 1em;
+}
+
+@media (min-width: 960px){
+
+	.documentation-content {
+		max-width: 70%;
+	}
+
+	pre {
+		border: 1px solid rgb(243, 252, 255);
+		background-color: rgb(243, 252, 255);
+	}
 }

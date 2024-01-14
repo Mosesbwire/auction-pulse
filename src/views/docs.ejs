@@ -15,7 +15,7 @@
                     </div>
                   </nav>
             </header>
-            <div class="row container">
+            <div class="mt-3 documentation-content">
                 <div>
                     <h2>Introduction</h2>
                     <p>The Auction Pulse API enables users to seamlessly create and manage live auctions through socket connections, providing a dynamic and real-time experience for both auctioneers and participants.</p>
@@ -23,8 +23,8 @@
                     <div>
                         <h3>Key Features</h3>
                         <ul>
-                            <li><span>Real-time Auctions</span>: Utilize WebSockets to establish live connections, ensuring that auctions unfold dynamically, with updates delivered instantaneously to all participants.</li>
-                            <li><span>Flexible auction management</span>:Empower users to seamlessly manage their auctions, from creating and updating listings to monitoring bidding activity and closing auctions with precision.</li>
+                            <li><strong>Real-time Auctions</strong>: Utilize WebSockets to establish live connections, ensuring that auctions unfold dynamically, with updates delivered instantaneously to all participants.</li>
+                            <li><strong>Flexible auction management</strong>: Empower users to seamlessly manage their auctions, from creating and updating listings to monitoring bidding activity and closing auctions with precision.</li>
                         </ul>
                     </div>
                 </div>
@@ -34,7 +34,7 @@
                     <p>Authentication is done through the http bearer authentication scheme.The token should be placed in your Authorization header</p>
                     <p>Requests without a token will fail.</p>
                     
-                    <code>
+                    <code class="code">
                         Authorization: Bearer {Your token here}
                     </code>
                     
@@ -147,15 +147,170 @@
                                 </div>
                               </div>
                             </div>
-                            <div class="accordion-item">
-                              <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseTwo" aria-expanded="false" aria-controls="flush-collapseTwo">
-                                  Live auction WebSockets
-                                </button>
-                              </h2>
-                              <div id="flush-collapseTwo" class="accordion-collapse collapse" data-bs-parent="#accordionFlushExample">
-                                <div class="accordion-body">Placeholder content for this accordion, which is intended to demonstrate the <code>.accordion-flush</code> class. This is the second item's accordion body. Let's imagine this being filled with some actual content.</div>
-                              </div>
+                            <div class="mt-4">
+                                <h3>Client Implentation</h3>
+                                <p>The api is built on socket.io, this section covers only the areas needed to get the client side working. For more information on socket.io you can check out its <a href="https://socket.io/docs/v4">documentation</a></p>
+                                <div>
+                                    <h5>Initialization</h5>
+                                    <p>The socket.io client can be implemented from npm or a cdn </p>
+                                    <p class="base-url">Use this base url when initializing the socket instance https://localhost:5000?id={auctionId}</p>
+                                    <p>npm</p>
+                                    <code class="code">npm install socket.io-client</code>
+                                    <p>For the code samples showing how to implement the client, we will use socket.io from a cdn.</p>
+                                    <p>On initialization, you will need to provide a unique identifier for each client. The unique identifier shall be used as the identity of the winner.</p>
+                                    <p>The identifier can either be an id or an email address.</p>
+                                    
+<pre>
+    <code>
+        import { io } from "https://cdn.socket.io/4.7.3/socket.io.esm.min.js";
+        const socket = io('http://localhost:5000?id=65a15c90f46c2aaba6fff699', {
+        auth: {
+            userId: '100',
+                                                    
+        },
+        });
+    </code>
+ </pre>
+                                    <p class="warning"><strong>Warning: </strong>Client request without a userId will lead to an unauthorized request. It is requred you provide a userId.</p>
+                                    <p>Further reading on socket <a href="https://socket.io/docs/v4/">initialization</a></p>
+                                    <div class="parent">
+                                        <h5>Events</h5>
+                                        <p>Emitting Events</p>
+                                        <p>The server listens for only two events from the client</p>
+                                        <ul>
+                                            <li>bid</li>
+                                            <li>custom bid</li>
+                                        </ul>
+                                        <p><code>bid</code></p>
+                                        <p>This event is emitted whenever a client places their bid on an item. This event does not need any data from the client. This event updates the current standing bid of the item, according to the bidIncrement amount provided when creating the auction.</p>
+                                        <p>If current standing bid is kshs.10000, the auction has a bidIncrement of 5000. Thus the new standingBid will increase by 5000 to 15000.</p>
+<pre>
+    <code>
+        import { io } from "https://cdn.socket.io/4.7.3/socket.io.esm.min.js";
+        const socket = io('http://localhost:5000?id=65a15c90f46c2aaba6fff699', {
+            auth: {
+                userId: '100',
+                                                        
+            },
+        });
+        const bidBtn = document.getElementById('bidBtn');
+        bidBtn.addEventListener('click', ()=> {
+            socket.emit('bid');
+        })
+    </code>
+</pre>
+                                        <p><code>custom bid</code></p>
+                                        <p>A custom bid allows the user to specify a bid amount they wish to place. The amount being placed must be higher than the current standing bid. If amount is lower an error appError event will be emitted from the server</p>
+                                        <p>The data object to be sent with a custom bid takes the following form <code>{bid: amount}.</code></p>
+                                        <p>In this example the current standing bid is Ksh.10000. For the bid to be correct, the amount must be higher than kshs.10000</p>
+<pre>
+    <code>
+        import { io } from "https://cdn.socket.io/4.7.3/socket.io.esm.min.js";
+        const socket = io('http://localhost:5000?id=65a15c90f46c2aaba6fff699', {
+            auth: {
+                userId: '100',
+                                                        
+            },
+        });
+        const bidBtn = document.getElementById('bidBtn');
+        bidBtn.addEventListener('click', ()=> {
+            socket.emit('custom bid', {bid: 11000});
+        })
+    </code>
+</pre>
+                                    </div>
+                                    <div>
+                                        <p>Listening for events</p>
+                                        <p>The server emits 5 events that the client can listen for.</p>
+                                        <div>
+                                            <p>update</p>
+                                            <p>This event updates all users with the current bid of the item they are bidding for.</p>
+<pre>
+    <code>
+        const currentBid = document.getElementById('currentBid');
+        socket.on('update', (data) => {
+            currentBid.innerText = data.bid;
+        })
+    </code>
+</pre>
+                                        </div>
+                                        <div>
+                                            <p>countdown</p>
+                                            <p>This event provides a countdown timer that shows time remaining, before the current standing bid is declared as winner of aution. This value is provided during creation of an aution in seconds</p>
+                                            <p>When a bid is placed before the timer ends, it will reset to it original value</p>
+<pre>
+    <code>
+        const countdown = document.getElementById('countdown');
+        socket.on('countdown', (data) => {
+            countdown.innerText = data;
+        })
+    </code>
+</pre>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p>appError</p>
+                                        <p>The appError event is only sent to the socket/user that experiences an error. If a user sends an invalid bid only that user will receive the error.</p>
+                                        <p>The appError is also emitted if a user tries to access an auction that has a pending or closed status.</p>
+<pre>
+    <code>
+        const errBanner = document.getElementById('err-banner');
+        socket.on('appError', (data) => {
+            // data -> {name: 'ClientError', message: 'Invalid bid amount.', status: 400}
+                                    
+            errBanner.innerText = data.message;
+        })
+    </code>
+</pre>
+                                    </div>
+                                    <div>
+                                        <p>close</p>
+                                        <p>This event is emitted if the timer runsdown to 0. This signals the end of the auction. The event is sent to all users that are bidding for the same item</p>
+                                        <p>No bids are accepted after this event has been emitted.</p>
+<pre>
+    <code>
+        const infoBanner = document.getElementById('info-banner');
+        socket.on('close', (data) => {
+        // data -> {standingBid: 250000, message: 'This auction has closed.', item: 'Toyota vitz'}
+                                    
+            errBanner.innerText = 'ITEM: ${data.item} has sold at ${data.standingBid}';
+        })
+    </code>
+</pre>
+                                    </div>
+                                    <div>
+                                        <p>welcome</p>
+                                        <p>The welcome event is emitted when the socket makes a succeddful connection. The event is only sent to the specific user.</p>
+                                        <p>The event provides information on about the auction</p>
+<pre>
+    <code>
+        const infoBanner = document.getElementById('info-banner');
+        socket.on('welcome', (data) => {
+            // data -> {bidIncrement: 1000, item: 'Toyota vitz', }
+                                    
+                                    
+        })
+    </code>
+</pre>
+                                    </div>
+                                    <div>
+                                        <p>connect_error</p>
+                                        <p>This is a native socket.io event. The event is emitted if a socket attempt at connection fails. It can alse be emitted due to middleware </p>
+
+                                        <p>This event will be emitted if the socket was not initiailized with a userId in the auth parameter as earlier illustrated in the initialization section.</p>
+<pre>
+    <code>
+        const errBanner = document.getElementById('err-banner');
+        socket.on('connect_error', (data) => {
+            //data -> {name: 'ClientError', message: 'Unauthorized request', status: 401}
+            errBanner.innerText = data.message
+                                    
+        })
+    </code>
+</pre>
+                                    </div>
+                                </div>
+                                </div>
                             </div>
                     </div>
                 </div>
