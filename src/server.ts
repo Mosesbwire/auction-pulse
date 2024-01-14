@@ -26,14 +26,6 @@ const io:Server = new Server(server, {
     }
 });
 
-// io.use((socket, next) => {
-//     const token = socket.handshake.auth.token
-    
-//     next()
-// })
-
-
-
 RedisClient.connectRedis();
 try {
     connectToDb(DB_URL)
@@ -68,9 +60,21 @@ app.use('/api/v1/auctions', auctionApi);
 
 const auctionProcess = AuctionProcessFactory.createProcess(io);
 const auctionService = new AuctionService(io, auctionProcess);
+
 const onConnection = async (socket: Socket) => {
     auctionService.run(socket);
 }
+
+io.use((socket, next) => {
+    const token = socket.handshake.auth.userId;
+    if (!token){
+				const err = new Error('UnauthorisedAccess');
+        next(err);
+    } 
+        
+    next()
+});
+
 io.on('connection', onConnection);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

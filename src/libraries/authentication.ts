@@ -40,11 +40,17 @@ export async function generateAuthToken<T extends Buffer | string | object>(payl
 		throw new AppError('ENVVARIABLEERR', 'missing environment variable \'SECRET_KEY\'', false)
 	}
 
-	return jwt.sign(payload, SECRET_KEY, {expiresIn: '1h',});
+	return jwt.sign(payload, SECRET_KEY, {expiresIn: '24h',});
 	
 }
 
-
+export async function verifyToken(token: string){
+	const SECRET_KEY = process.env.SECRET_KEY;
+	if (!SECRET_KEY){
+		throw new AppError('ENVVARIABLEERR', 'missing environment variable \'SECRET_KEY\'', false)
+	}
+	return jwt.verify(token, SECRET_KEY)
+}
 interface Ioptions {
 	jwtFromRequest: JwtFromRequestFunction,
 	ignoreExpiration: boolean,
