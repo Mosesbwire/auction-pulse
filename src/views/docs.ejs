@@ -60,30 +60,27 @@
                                             <p>Create an auction</p>
                                             <p>Request body Json format</p>
                                             <code>
-                                                    {
+                                                {
     
-                                                        "auctionData": {
-                                                            "startDate": "2024-01-19T07:05:43.166Z",
-                                                            "bidIncrement": 10000,
-                                                            "status": "open",
-                                                            "timer": 60
-                                                        },
-                                                        "itemData": {
-                                                            "reservePrice": 5000,
-                                                            "title": "toyota"
-                                                        }
+                                                    "auctionData": {
+                                                        "startDate": "2024-01-12T09:45",
+                                                        "bidIncrement": 5000,
+                                                        "start": true,
+                                                        "timer": 60
+                                                    },
+                                                    "itemData": {
+                                                        "reservePrice": 500000,
+                                                        "title": "Rolex"
                                                     }
-                                            </code>
+                                                }                   </code>
                                             <p>Required parameters</p>
                                             <ul>
                                                 <li><code>bidIncrement</code>: represents the amount the bids will be increased by</li>
                                                 <li><code>timer</code>: represents time in seconds between which bidders can place competing bid. If timer runs down to zero the auction ends and stading bid is declared winner.</li>
                                                 <li><code>reservePrice</code>: the price at which the bidding will start at</li>
-                                            </ul>
-                                            <p>Optional parameters</p>
-                                            <ul>
-                                                <li><code>status</code>: pass the status as <code>open</code> if you want your auction to be live immediately. If status is not provided you should provide a <code>startDate</code> otherwise your auction will never run as it will have <code>pending</code> status</li>
                                                 <li><code>startDate</code>: this should be a datetime in the future, thus scheduling your auction to be <code>open</code> at the stated date.</li>
+                                                <p>startDate format <code>YYYY-MM-ddT:HH:MM</code></p>
+                                                <li><code>start</code>: boolean value representing if the auction starts immediately on creation if true otherwise if false the auction will be pending and will run at the future date as specified in startDate</li>
                                             </ul>
                                             
                                         </div>
@@ -96,11 +93,11 @@
                                                     "status": "open",
                                                     "startDate": "2024-01-19T07:05:43.166Z",
                                                     bids: []
-                                                    "bidIncrement": 10000,
+                                                    "bidIncrement": 5000,
                                                     "timer": 60,
                                                     "item": {
-                                                        "title": "toyota",
-                                                        "reservePrice": 5000,
+                                                        "title": "rolex",
+                                                        "reservePrice": 500000,
                                                         "_id": "659dc3df1a4f2a5a77e9e5c1"
                                                     },
                                                     
@@ -153,7 +150,7 @@
                                 <div>
                                     <h5>Initialization</h5>
                                     <p>The socket.io client can be implemented from npm or a cdn </p>
-                                    <p class="base-url">Use this base url when initializing the socket instance https://localhost:5000?id={auctionId}</p>
+                                    <p class="base-url">Use this base url when initializing the socket instance https://auction-pulse-api.onrender.com?id={auctionId}</p>
                                     <p>npm</p>
                                     <code class="code">npm install socket.io-client</code>
                                     <p>For the code samples showing how to implement the client, we will use socket.io from a cdn.</p>
@@ -163,7 +160,7 @@
 <pre>
     <code>
         import { io } from "https://cdn.socket.io/4.7.3/socket.io.esm.min.js";
-        const socket = io('http://localhost:5000?id=65a15c90f46c2aaba6fff699', {
+        const socket = io('https://auction-pulse-api.onrender.com?id=65a15c90f46c2aaba6fff699', {
         auth: {
             userId: '100',
                                                     
