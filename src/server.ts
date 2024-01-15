@@ -1,6 +1,7 @@
 import express, {Response, Request, NextFunction} from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import cors from 'cors';
 import connectToDb from '../config/db.config';
 import RedisClient from './libraries/caching/redisCache';
 import { createServer } from 'http';
@@ -24,6 +25,7 @@ const DB_URL = process.env.MONGO_URL || ''
 const SECRET_KEY = process.env.SECRET_KEY || ''
 const app = express();
 const server = createServer(app);
+app.use(cors());
 const io:Server = new Server(server, {
     cors: {
         origin: "*"
