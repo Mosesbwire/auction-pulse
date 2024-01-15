@@ -4,6 +4,7 @@ import { asyncWrapper } from "../libraries/utils/asyncWrapper";
 
 
 const REDIS_URL = process.env.NODE_ENV === 'PRODUCTION' ? process.env.REDIS_URL : process.env.REDIS_URL_DEV
+console.log(REDIS_URL)
 const jobQueue = new Queue(String(REDIS_URL));
 
 async function updateAuctionBid(job: Job){
