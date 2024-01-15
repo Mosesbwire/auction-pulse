@@ -3,8 +3,8 @@ import Auction from "../components/auction/auction";
 import { asyncWrapper } from "../libraries/utils/asyncWrapper";
 
 
-
-const jobQueue = new Queue('redis://127.0.0.1:6379');
+const REDIS_URL = process.env.NODE_ENV === 'PRODUCTION' ? process.env.REDIS_URL : process.env.REDIS_URL_DEV
+const jobQueue = new Queue(String(REDIS_URL));
 
 async function updateAuctionBid(job: Job){
     const data = job.data
